@@ -1,12 +1,24 @@
-let stage, loader, flappy;
-let started = false;
+let stage,
+  loader,
+  flappy,
+  jumpListener,
+  pipeCreator,
+  topPipe,
+  bottomPipe,
+  score,
+  scoreTxt,
+  endGameTxt,
+  startGameTxt,
+  grassCreator,
+  initGrass;
+let started;
 let polygon;
 
 const init = () => {
-  stage = new createjs.Stage("gameCanvas");
+  stage = new createjs.StageGL("gameCanvas");
 
   createjs.Ticker.timingMode = createjs.Ticker.RAF_SYNCED;
-  createjs.Ticker.framerate = 120;
+  createjs.Ticker.framerate = 240;
   createjs.Ticker.addEventListener("tick", stage);
 
   const background = new createjs.Shape();
@@ -31,6 +43,7 @@ const init = () => {
     { src: "cloud.png", id: "cloud" },
     { src: "flappy.png", id: "flappy" },
     { src: "pipe.png", id: "pipe" },
+    { src: "grass.png", id: "grass" },
   ];
 
   loader = new createjs.LoadQueue(true);
@@ -39,12 +52,23 @@ const init = () => {
 };
 
 const handleComplete = () => {
+  started = false;
   createClouds();
   createFlappy();
-  stage.on("stagemousedown", jumpFlappy);
+  jumpListener = stage.on("stagemousedown", jumpFlappy);
   createjs.Ticker.addEventListener("tick", checkCollision);
-  polygon = new createjs.Shape();
-  stage.addChild(polygon);
+  createScore();
+  createStartGameTxt();
+  grassInit();
+};
+
+const grassInit = () => {
+  initGrass = new createjs.Bitmap(loader.getResult("grass"));
+  initGrass.y = 320;
+  initGrass.x = -30;
+  initGrass.name = "initGrass";
+
+  stage.addChild(initGrass);
 };
 
 const createClouds = () => {
@@ -80,24 +104,22 @@ const createClouds = () => {
   }
 };
 
-const flappySize = (flappy) => {
-  flappy.scaleX = 0.07;
-  flappy.scaleY = 0.07;
-};
-
 const createFlappy = () => {
   flappy = new createjs.Bitmap(loader.getResult("flappy"));
   flappy.regX = flappy.image.width / 2;
   flappy.regY = flappy.image.height / 2;
   flappy.x = stage.canvas.width / 2;
   flappy.y = stage.canvas.height / 2;
-  //   flappySize(flappy);
   stage.addChild(flappy);
 };
 
 const jumpFlappy = () => {
   if (!started) {
     startGame();
+    stage.removeChild(startGameTxt, startGameTxtOutline);
+    createjs.Tween.get(initGrass)
+      .to({ x: 0 - stage.canvas.width }, 6500)
+      .call(() => removeGrass(initGrass));
   }
   createjs.Tween.get(flappy, { override: true })
     .to(
@@ -124,7 +146,7 @@ const pipeSize = (botPipe, topPipe) => {
 };
 
 const createPipes = () => {
-  let topPipe, bottomPipe;
+  topPipe, bottomPipe;
   let position = Math.floor(Math.random() * 280 + 100);
 
   topPipe = new createjs.Bitmap(loader.getResult("pipe"));
@@ -142,26 +164,128 @@ const createPipes = () => {
   topPipe.regX = bottomPipe.regX = topPipe.image.width / 2;
 
   createjs.Tween.get(topPipe)
-    .to({ x: 0 - topPipe.image.width }, 15000)
-    .call(() => removePipe(topPipe));
+    .to({ x: 0 - topPipe.image.width }, 18000)
+    .call(() => removePipe(topPipe))
+    .addEventListener("change", updatePipe);
 
   createjs.Tween.get(bottomPipe)
-    .to({ x: 0 - bottomPipe.image.width }, 15000)
+    .to({ x: 0 - bottomPipe.image.width }, 18000)
     .call(() => removePipe(bottomPipe));
 
+  let scoreIndex = stage.getChildIndex(scoreTxt);
   pipeSize(bottomPipe, topPipe);
 
-  stage.addChild(bottomPipe, topPipe);
+  stage.addChildAt(bottomPipe, topPipe, scoreIndex);
 };
 
 const removePipe = (pipe) => {
   stage.removeChild(pipe);
 };
 
+const updatePipe = (e) => {
+  let pipeUpdate = e.target.target;
+  if (pipeUpdate.x - pipeUpdate.regX + 920 < flappy.x - flappy.regX) {
+    e.target.removeEventListener("change", updatePipe);
+    incrementScore();
+  }
+};
+
+const createGrass = () => {
+  let grass;
+
+  grass = new createjs.Bitmap(loader.getResult("grass"));
+  grass.y = 320;
+  grass.x = stage.canvas.width;
+  grass.name = "grass";
+
+  createjs.Tween.get(grass, { loop: true })
+    .to({ x: 0 - stage.canvas.width }, 8000)
+    .call(() => removeGrass(grass));
+
+  stage.addChild(grass);
+};
+
+const removeGrass = (grass) => {
+  stage.removeChild(grass);
+};
+
+const incrementScore = () => {
+  score++;
+  scoreTxt.text = scoreTxtOutline.text = score;
+  scoreTxt.updateCache();
+  scoreTxtOutline.updateCache();
+};
+
+const createScore = () => {
+  score = 0;
+  scoreTxt = new createjs.Text(score, "bold 40px Arial", "#6B8E23");
+  scoreTxt.textAlign = "center";
+  scoreTxt.textBaseline = "middle";
+  scoreTxt.x = 40;
+  scoreTxt.y = 40;
+  let bounds = scoreTxt.getBounds();
+  scoreTxt.cache(
+    -40,
+    -40,
+    bounds.width * 3 + Math.abs(bounds.x),
+    bounds.height + Math.abs(bounds.y)
+  );
+
+  scoreTxtOutline = scoreTxt.clone();
+  scoreTxtOutline.color = "#000000";
+  scoreTxtOutline.outline = 1.5;
+
+  bounds = scoreTxtOutline.getBounds();
+  scoreTxtOutline.cache(
+    -40,
+    -40,
+    bounds.width * 3 + Math.abs(bounds.x),
+    bounds.height + Math.abs(bounds.y)
+  );
+
+  stage.addChild(scoreTxt, scoreTxtOutline);
+};
+
+const createStartGameTxt = () => {
+  startGameTxt = new createjs.Text(
+    "Start tapping to play!",
+    "bold 30px Arial",
+    "#FFFFFF"
+  );
+  startGameTxt.textAlign = "center";
+  startGameTxt.textBaseline = "middle";
+  startGameTxt.x = 163;
+  startGameTxt.y = 120;
+
+  let bounds = startGameTxt.getBounds();
+  startGameTxt.cache(
+    -165,
+    -15,
+    bounds.width * 3 + Math.abs(bounds.x),
+    bounds.height + Math.abs(bounds.y)
+  );
+
+  startGameTxtOutline = startGameTxt.clone();
+  startGameTxtOutline.color = "#000000";
+  startGameTxtOutline.outline = 1.5;
+
+  bounds = startGameTxtOutline.getBounds();
+  startGameTxtOutline.cache(
+    -165,
+    -15,
+    bounds.width * 3 + Math.abs(bounds.x),
+    bounds.height + Math.abs(bounds.y)
+  );
+
+  stage.addChild(startGameTxt, startGameTxtOutline);
+};
+
 const startGame = () => {
   started = true;
   createPipes();
-  setInterval(createPipes, 2000);
+  createGrass();
+  pipeCreator = setInterval(createPipes, 2000);
+  grassCreator = setInterval(createGrass, 1500);
 };
 
 const checkCollision = () => {
@@ -177,14 +301,6 @@ const checkCollision = () => {
     ),
   ];
 
-  polygon.graphics.clear().beginStroke("black");
-  polygon.graphics
-    .moveTo(points[0].x, points[0].y)
-    .lineTo(points[2].x, points[2].y)
-    .lineTo(points[3].x, points[3].y)
-    .lineTo(points[1].x, points[1].y)
-    .lineTo(points[0].x, points[0].y);
-
   for (let i = 0; i < points.length; i++) {
     let objects = stage.getObjectsUnderPoint(points[i].x, points[i].y);
     if (objects.filter((object) => object.name === "pipe").length > 0) {
@@ -194,6 +310,58 @@ const checkCollision = () => {
   }
 };
 
+const createGameOverTxt = (scoreTxt) => {
+  endGameTxt = new createjs.Text(
+    `Game over\nYour score is ${scoreTxt}`,
+    "bold 40px Arial",
+    "#1E90FF"
+  );
+  endGameTxt.textAlign = "center";
+  endGameTxt.textBaseline = "middle";
+  endGameTxt.x = 163;
+  endGameTxt.y = 120;
+
+  let bounds = endGameTxt.getBounds();
+  endGameTxt.cache(
+    -165,
+    -18,
+    bounds.width * 3 + Math.abs(bounds.x),
+    bounds.height + Math.abs(bounds.y)
+  );
+
+  endGameTxtOutline = endGameTxt.clone();
+  endGameTxtOutline.color = "#000000";
+  endGameTxtOutline.outline = 2.5;
+
+  bounds = endGameTxtOutline.getBounds();
+  endGameTxtOutline.cache(
+    -165,
+    -18,
+    bounds.width * 3 + Math.abs(bounds.x),
+    bounds.height + Math.abs(bounds.y)
+  );
+
+  stage.addChild(endGameTxt, endGameTxtOutline);
+};
+
 const gameOver = () => {
+  createGameOverTxt(score);
   createjs.Tween.removeAllTweens();
+  stage.off("stagemousedown", jumpListener);
+  clearInterval(pipeCreator);
+  clearInterval(grassCreator);
+  createjs.Ticker.removeEventListener("tick", checkCollision);
+  setTimeout(() => {
+    stage.on("stagemousedown", resetGame, null, true);
+  }, 1000);
+};
+
+const resetGame = () => {
+  let childrenToRemove = stage.children.filter(
+    (child) => child.name !== "background"
+  );
+  for (let i = 0; i < childrenToRemove.length; i++) {
+    stage.removeChild(childrenToRemove[i]);
+  }
+  handleComplete();
 };
